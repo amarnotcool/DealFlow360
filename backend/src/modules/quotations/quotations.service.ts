@@ -4,13 +4,14 @@
 // database, handed to the pure engine in discount-engine.service.ts, and its
 // result is persisted. Nothing in this file recomputes an overage or a score.
 
-import { Prisma, QuotationStatus, ApprovalStepStatus, ApprovalLevel, AuditAction, RiskLevel as PrismaRiskLevel, LineType } from '@prisma/client';
+import { Prisma, QuotationStatus, ApprovalStepStatus, ApprovalLevel, AuditAction, RiskLevel as PrismaRiskLevel, LineType, SalesOrderStatus } from '@prisma/client';
 import type { DiscountEngineLineInput, DiscountEngineResult } from '@dealflow360/shared';
 
 import { prisma } from '../../lib/prisma-client';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors';
 import { recordAudit } from '../../shared/audit/audit.service';
 import { computeDiscountRisk } from '../discount-engine/discount-engine.service';
+import { createSubscriptionsForOrder } from '../subscriptions/subscriptions.service';
 
 const D = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value);
 const HUNDRED = D(100);
@@ -637,4 +638,112 @@ export async function submitQuotation(quotationId: string, actorUserId: string) 
   });
 
   return getQuotation(quotationId);
+}
+
+// ---------------------------------------------------------------------------
+// Confirm — the approved quote becomes the order fulfillment works from
+// ---------------------------------------------------------------------------
+
+/** Generates the next SO-<year>-<counter> number. */
+async function nextSalesOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `SO-${year}-`;
+  const latest = await tx.salesOrder.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  });
+
+  const lastCounter = latest ? Number.parseInt(latest.number.slice(prefix.length), 10) : 0;
+  return `${prefix}${String(lastCounter + 1).padStart(4, '0')}`;
+}
+
+/**
+ * Confirms an approved quotation: the quote moves to CONFIRMED and its lines
+ * are copied into a sales_order (1:1 with the quotation, as specs.md §5
+ * requires for quote-to-order traceability). Fulfillment anchors on that order.
+ */
+export async function confirmQuotation(quotationId: string, actorUserId: string) {
+  const salesOrderId = await prisma.$transaction(async (tx) => {
+    const quotation = await tx.quotation.findUnique({
+      where: { id: quotationId },
+      include: { lines: { orderBy: { sequence: 'asc' } }, salesOrder: { select: { id: true } } },
+    });
+    if (!quotation) {
+      throw new NotFoundError('Quotation', quotationId);
+    }
+    if (quotation.status !== QuotationStatus.APPROVED) {
+      throw new ConflictError(`Quotation in status ${quotation.status} cannot be confirmed`);
+    }
+    if (quotation.salesOrder) {
+      throw new ConflictError(`Quotation ${quotation.number} already has a sales order`);
+    }
+    if (quotation.lines.length === 0) {
+      throw new ValidationError('A quotation needs at least one line before it can be confirmed');
+    }
+
+    const salesOrder = await tx.salesOrder.create({
+      data: {
+        number: await nextSalesOrderNumber(tx),
+        quotationId: quotation.id,
+        customerId: quotation.customerId,
+        status: SalesOrderStatus.CONFIRMED,
+        oneTimeTotalAmount: quotation.oneTimeTotalAmount,
+        recurringTotalAmount: quotation.recurringTotalAmount,
+        totalAmount: quotation.totalAmount,
+        confirmedByUserId: actorUserId,
+      },
+    });
+
+    for (const line of quotation.lines) {
+      await tx.salesOrderLine.create({
+        data: {
+          salesOrderId: salesOrder.id,
+          quotationLineId: line.id,
+          productId: line.productId,
+          productVariantId: line.productVariantId,
+          lineType: line.lineType,
+          sequence: line.sequence,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          discountPct: line.discountPct,
+          lineTotal: line.lineTotal,
+        },
+      });
+    }
+
+    await tx.quotation.update({
+      where: { id: quotationId },
+      data: { status: QuotationStatus.CONFIRMED, confirmedAt: new Date(), lastActivityAt: new Date() },
+    });
+
+    // A confirmed order carries its recurring lines straight into
+    // subscriptions, so one confirm produces both halves of a hybrid order.
+    const subscriptionIds = await createSubscriptionsForOrder(tx, salesOrder.id, actorUserId);
+
+    await recordAudit(tx, {
+      entityType: 'quotation',
+      entityId: quotationId,
+      action: AuditAction.CONFIRM,
+      userId: actorUserId,
+      reason: `Confirmed — sales order ${salesOrder.number} created`,
+      changes: {
+        salesOrderId: salesOrder.id,
+        number: salesOrder.number,
+        lineCount: quotation.lines.length,
+        subscriptionIds,
+      },
+    });
+
+    return salesOrder.id;
+  });
+
+  return prisma.salesOrder.findUniqueOrThrow({
+    where: { id: salesOrderId },
+    include: {
+      customer: { select: { id: true, name: true } },
+      quotation: { select: { id: true, number: true, status: true } },
+      lines: { orderBy: { sequence: 'asc' } },
+    },
+  });
 }
