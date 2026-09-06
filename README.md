@@ -72,6 +72,7 @@ DealFlow360 is a comprehensive, self-governing B2B sales operations platform tha
 ### Database & Storage
 - **PostgreSQL 16** - Relational data store (41 tables in schema)
 - **Decimal Precision** - `Decimal(14,2)` for currency and `Decimal(6,2)` for percentages (no floating-point drift)
+- **Data Model & ERD** - [Interactive Entity Relationship Diagram on Eraser.io](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)
 
 ### DevOps & Development Tools
 - **Docker & Docker Compose** - Containerized PostgreSQL instance
@@ -85,6 +86,8 @@ DealFlow360 is a comprehensive, self-governing B2B sales operations platform tha
 
 ![DealFlow360 System Architecture](docs/architecture.png)
 
+> 🔗 **Interactive Data Model / ERD:** [View full schema & entity relationships on Eraser.io](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)
+
 ### Architectural Layer Breakdown
 
 1. **Dual-Surface Client Layer:**
@@ -96,7 +99,7 @@ DealFlow360 is a comprehensive, self-governing B2B sales operations platform tha
 3. **Pure Algorithmic Core (The Judged Differentiator):**
    - Pure mathematical engines (`discount-engine.service.ts`, `split-allocator.ts`, `proration.ts`) operate with **zero Express, Prisma, or runtime I/O dependencies**. They evaluate plain data objects using integer hundredths, guaranteeing deterministic behavior across all tests and workflows.
 4. **Persistence & Auditing:**
-   - Single source of truth in PostgreSQL 16 managed via Prisma ORM across 41 relational tables.
+   - Single source of truth in PostgreSQL 16 managed via Prisma ORM across 41 relational tables ([Interactive Data Model / ERD](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)).
    - All state mutations (discounts, approvals, manual fulfillment overrides, stock adjustments) automatically write immutable records to the `audit_log` table.
 
 ---
