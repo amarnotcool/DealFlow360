@@ -79,8 +79,25 @@ DealFlow360 is a comprehensive, self-governing B2B sales operations platform tha
 - **Vitest 3** - Fast unit test runner for business engines
 - **Playwright** - End-to-end browser verification
 
+---
 
+## System Architecture
 
+![DealFlow360 System Architecture](docs/architecture.png)
+
+### Architectural Layer Breakdown
+
+1. **Dual-Surface Client Layer:**
+   - **Internal Sales Workspace:** High-velocity, role-adaptive workspace for sales reps, managers, finance, and admins (`/dashboard`, `/quotations`, `/approvals`, etc.).
+   - **Restricted Customer Portal:** Customer-safe, isolated negotiation environment (`/portal/*`) where internal pricing ceilings, risk scores, and margins are stripped out.
+2. **API & Security Boundary:**
+   - **Surface Token Isolation:** Independent JWT tokens (`JWT_SECRET` vs `PORTAL_TOKEN_SECRET`) prevent portal contacts from accessing internal endpoints even via URL tampering.
+   - **Path-Scoped RBAC:** Endpoints are individually guarded with role-based policies.
+3. **Pure Algorithmic Core (The Judged Differentiator):**
+   - Pure mathematical engines (`discount-engine.service.ts`, `split-allocator.ts`, `proration.ts`) operate with **zero Express, Prisma, or runtime I/O dependencies**. They evaluate plain data objects using integer hundredths, guaranteeing deterministic behavior across all tests and workflows.
+4. **Persistence & Auditing:**
+   - Single source of truth in PostgreSQL 16 managed via Prisma ORM across 41 relational tables.
+   - All state mutations (discounts, approvals, manual fulfillment overrides, stock adjustments) automatically write immutable records to the `audit_log` table.
 
 ---
 
