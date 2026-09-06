@@ -1,293 +1,211 @@
-# DealFlow360 - Intelligent, Self-Governing Sales Operations Platform: Odoo Hackathon 2026
+# DealFlow360
 
-DealFlow360 is a comprehensive, self-governing B2B sales operations platform that bridges the gap between sales quotation, discount governance, warehouse inventory reality, and customer negotiation. Moving beyond static quote-to-invoice forms, the platform provides automated approval routing with a pure blended risk engine, live upsell recommendations, multi-warehouse fulfillment splitting, hybrid subscription billing with mid-cycle proration, and customer portal negotiation.
+A B2B sales operations platform: quotation → multi-tier discount approval →
+multi-warehouse fulfillment → hybrid one-time + subscription billing →
+customer-facing portal negotiation → deal health monitoring.
 
----
-
-## Features
-
-### For Sales Reps
-- **Quotation Builder:** Rapidly configure quotes mixing hardware, services, and recurring subscriptions with live catalog pricing.
-- **Real-Time Margin & Ceiling Indicators:** Visual indicators (`OVER (+Npt)`) update live as discounts are typed against product and customer tier ceilings.
-- **Live Upsell & Cross-Sell:** Ranked suggestion panel surfaces healthy-margin items (≥20% margin cutoff) with instant margin and order total recalculation.
-- **Approval Tracking:** Automated submission and routing; reps never have to manually guess who needs to approve a discount.
-- **Negotiation Management:** Review, accept, or reject counter-discount proposals and comments submitted by customers directly within the quotation view.
-
-### For Sales Managers
-- **Multi-Tier Discount Governance:** Automatic policy enforcement evaluating line-item category ceilings and customer tier limits.
-- **Blended Risk Score Engine:** Intelligent scoring (`0.6 × max single overage + 0.4 × total overage`) that catches both single egregious breaches and quiet margin erosion spread across multiple lines.
-- **Approval Workbench:** Comprehensive review screen displaying the "Why Flagged" breakdown, risk metrics, approval timelines, and audit trails.
-- **Decision Controls:** One-click `Approve`, `Reject`, or `Return for Revision` with required justification logging.
-- **Deal Health Monitoring:** Track at-risk deals with automated anomaly detection for stalled quotes, discount anomalies, and delivery slippages.
-
-### For Finance & Operations
-- **Tier-2 Escalations:** Second-level approvals for high-risk discounts and policy violations.
-- **Multi-Warehouse Split Optimization:** Algorithmic split allocator (`split-allocator.ts`) that minimizes total shipments and respects warehouse shipping cost weights.
-- **Manual Fulfillment Override:** Interactive matrix to override warehouse assignments with mandatory audit justification.
-- **Backorder Management:** Automatic backorder creation with one-click **"Consolidate Remaining Backorder"** when new inventory arrives.
-- **Hybrid Billing & Invoicing:** Separate invoicing streams for physical goods (billed upon shipment) and subscription lines (billed per cycle schedule).
-- **Automated Credit Notes:** Mid-cycle subscription cancellations and downgrades automatically calculate daily proration and generate credit notes.
-
-### For Customers (Portal Users)
-- **Dedicated Negotiation Portal:** Isolated customer view with customer-safe terminology (internal margins, ceilings, and risk scores are hidden).
-- **Line-Level Change Requests:** Submit line-item comments, request delivery dates, and propose counter-discounts.
-- **Instant Order Confirmation:** Confirm quotes with a single click.
-- **Auto Re-Approval Protection:** If customer-confirmed terms breach company thresholds, the deal automatically re-enters internal manager approval.
-
-### For Administrators
-- **Discount Tiers & Policy Setup:** Dynamic configuration screen (`/discount-tiers`) for customer tier ceilings, category limits, and global backstops.
-- **Catalog & Price List Management:** Comprehensive CRUD for products, variants with `extraPrice`, recurring cycles, and tier-linked price lists.
-- **Warehouse & Inventory Administration:** Configure regional warehouses, shipping weights, stock receipts, and inventory corrections.
-- **User & RBAC Directory:** Manage internal staff roles (`SALES_REP`, `SALES_MANAGER`, `FINANCE`, `ADMIN`).
-- **Reporting & Analytics:** Generate exportable sales performance reports with period, rep, status, and product filters in **PDF** and **XLSX**.
+Built for the Odoo hackathon. The whole quote-to-cash chain runs end to end on a
+seeded database — a rep prices a quote, the discount engine routes it for
+approval on its own, stock is split across warehouses, the order bills its
+one-time and recurring parts separately, the customer negotiates from their own
+portal, and payment closes the invoice.
 
 ---
 
-## Security & Monitoring
+## The idea
 
-- **Immutable Audit Logging:** Every approval, rejection, discount modification, manual split override, and stock movement writes an audit log entry with actor ID, timestamp, and rationale.
-- **Surface Isolation:** Complete boundary separation between the internal workspace (`/auth/*`) and customer portal (`/portal/*`) utilizing independent JWT secrets (`JWT_SECRET` vs `PORTAL_TOKEN_SECRET`).
-- **Deal Health Detectors:** Automated scanning for stalled quotes, historical rep discount anomalies, and delivery promise slippage.
-- **Action Bar Notifications:** Built-in notification bell aggregating pending approvals, active negotiations, and health alerts.
+Most quoting tools let a rep type any discount and ask a manager to eyeball it.
+The interesting problem is **governance**: which discounts are allowed, who has
+to sign off, and what happens when a customer negotiates after the fact.
 
----
+Three decisions are the product, and all three are real algorithms rather than
+rules of thumb:
 
-## Technology Stack
+### 1. Blended discount risk
 
-### Frontend
-- **React 18** - Component-based user interface
-- **TypeScript** - Strict end-to-end type safety
-- **Vite 6** - Next-generation frontend tooling and build pipeline
-- **Tailwind CSS 3** - Custom neo-glassmorphic styling system
-- **React Router 6** - Client-side routing with role-based guards
-
-### Backend
-- **Node.js (v20+) & Express 4** - RESTful API backend
-- **TypeScript** - Full backend type safety
-- **Prisma ORM 6** - Type-safe database queries and migrations
-- **Zod 3** - Strict runtime request validation
-- **PDFKit & XLSX** - Native server-side document generation for PDF and Excel exports
-- **Pure Algorithmic Engines** - Zero-dependency mathematical engines for discount risk, split allocation, and proration
-
-### Database & Storage
-- **PostgreSQL 16** - Relational data store (41 tables in schema)
-- **Decimal Precision** - `Decimal(14,2)` for currency and `Decimal(6,2)` for percentages (no floating-point drift)
-- **Data Model & ERD** - [Interactive Entity Relationship Diagram on Eraser.io](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)
-
-### DevOps & Development Tools
-- **Docker & Docker Compose** - Containerized PostgreSQL instance
-- **npm Workspaces** - Monorepo architecture (`shared`, `backend`, `frontend`)
-- **Vitest 3** - Fast unit test runner for business engines
-- **Playwright** - End-to-end browser verification
-
----
-
-## System Architecture
-
-![DealFlow360 System Architecture](docs/architecture.png)
-
-> 🔗 **Interactive Data Model / ERD:** [View full schema & entity relationships on Eraser.io](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)
-
-### Architectural Layer Breakdown
-
-1. **Dual-Surface Client Layer:**
-   - **Internal Sales Workspace:** High-velocity, role-adaptive workspace for sales reps, managers, finance, and admins (`/dashboard`, `/quotations`, `/approvals`, etc.).
-   - **Restricted Customer Portal:** Customer-safe, isolated negotiation environment (`/portal/*`) where internal pricing ceilings, risk scores, and margins are stripped out.
-2. **API & Security Boundary:**
-   - **Surface Token Isolation:** Independent JWT tokens (`JWT_SECRET` vs `PORTAL_TOKEN_SECRET`) prevent portal contacts from accessing internal endpoints even via URL tampering.
-   - **Path-Scoped RBAC:** Endpoints are individually guarded with role-based policies.
-3. **Pure Algorithmic Core (The Judged Differentiator):**
-   - Pure mathematical engines (`discount-engine.service.ts`, `split-allocator.ts`, `proration.ts`) operate with **zero Express, Prisma, or runtime I/O dependencies**. They evaluate plain data objects using integer hundredths, guaranteeing deterministic behavior across all tests and workflows.
-4. **Persistence & Auditing:**
-   - Single source of truth in PostgreSQL 16 managed via Prisma ORM across 41 relational tables ([Interactive Data Model / ERD](https://app.eraser.io/workspace/iTJj5NGuXCaXmtnmNjD1?origin=share)).
-   - All state mutations (discounts, approvals, manual fulfillment overrides, stock adjustments) automatically write immutable records to the `audit_log` table.
-
----
-
-## Project Structure
+A line is measured against the **tighter** of its customer's tier ceiling and its
+product category's ceiling. Anything above that is the line's *overage*. The
+quotation's risk is not the worst line and not the sum — it is a blend:
 
 ```
-dealflow360/
-├── shared/                         # @dealflow360/shared — Types shared across FE & BE
-│   └── types/                      # Universal domain interfaces & enums
-├── backend/                        # Express API & business logic
-│   ├── prisma/                     # Database schema (41 tables) and seed script
-│   │   ├── schema.prisma
-│   │   └── seed.ts
-│   ├── src/
-│   │   ├── modules/                # Domain-driven backend modules
-│   │   │   ├── approvals/          # Multi-level approval state machine
-│   │   │   ├── auth/               # Internal staff authentication
-│   │   │   ├── billing/            # Invoicing and payment reconciliation
-│   │   │   ├── deal-health/        # Anomaly detectors (Stalled, Anomaly, Slippage)
-│   │   │   ├── discount-engine/    # Pure blended risk scoring engine
-│   │   │   ├── discount-tiers/     # Discount ceilings & approval chain rules
-│   │   │   ├── fulfillment/        # Warehouse split allocator & backorders
-│   │   │   ├── inventory/          # Stock movements & reorder management
-│   │   │   ├── negotiation/        # Staff-side negotiation response handlers
-│   │   │   ├── portal/             # Customer-facing quotation negotiation
-│   │   │   ├── portal-auth/        # Customer portal authentication
-│   │   │   ├── products/           # Catalog, variants & price lists
-│   │   │   ├── quotations/         # Quote builder, lines & recomputation
-│   │   │   ├── recommendations/    # Upsell / cross-sell scoring & pairings
-│   │   │   ├── reporting/          # Aggregations, PDF & XLSX exports
-│   │   │   └── subscriptions/      # Recurring plans & pure proration engine
-│   │   ├── middleware/             # Auth, Portal-Auth, RBAC, Validation
-│   │   └── shared/audit/           # Transactional audit logging
-│   └── tests/                      # Vitest unit test suites
-└── frontend/                       # React 18 frontend
-    └── src/
-        ├── components/
-        │   ├── layout/             # InternalNav, InternalLayout, PortalLayout, NotificationBell
-        │   └── ui/                 # Reusable design tokens (Button, Card, Table, Badge)
-        ├── features/               # Domain API clients and custom hooks
-        └── pages/
-            ├── internal/           # Internal screens (Dashboard, Quotations, Approvals, etc.)
-            └── portal/             # Customer portal screens (Overview, Negotiation, Messages)
+blended score = 0.6 × (worst single line's overage) + 0.4 × (total overage)
 ```
 
----
+That matters because both failure modes are real. One outrageous line is a
+problem, and so is a quote where ten lines each slip three points and nobody
+notices. Weighting only the worst line misses the second; summing misses the
+first.
 
-## Setup & Installation
+The score picks the approval chain: `0` auto-approves, anything below `5.00`
+routes to the Sales Manager, `5.00` and above adds Finance. **The rep never
+clicks "request approval"** — submitting runs the engine and raises the chain.
 
-### Prerequisites
-- **Node.js 20+**
-- **npm 10+**
-- **Docker & Docker Compose**
+*Worked example (`specs.md` §3, seeded as `Q-2026-0001`):* a Gold customer with
+three lines — Laptop at 12% against a 15% ceiling, Onsite Setup at 18% against a
+10% ceiling, Warranty at 10% against 15%. One line is 8 points over, so the
+blend is `0.6 × 8 + 0.4 × 8 = 8.00` — **HIGH**, Sales Manager then Finance.
 
-### Local Development
+### 2. Multi-warehouse split allocation
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/amarnotcool/DealFlow360_trial.git
-   cd DealFlow360_trial
-   ```
+Confirming an order asks the allocator where the stock actually is. It fills
+each line from the deepest stock first so the order opens as few shipments as
+possible, prefers one cheaper warehouse over a split when a single site can
+cover the line, reuses a warehouse already opened for another line rather than
+adding a shipment, never promises the same stock to two lines, and backorders
+whatever is genuinely short.
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+### 3. Subscription proration
 
-3. **Environment setup:**
-   ```bash
-   cp backend/.env.example backend/.env
-   cp frontend/.env.example frontend/.env
-   ```
+A plan change mid-cycle is priced for the part of the cycle that is left —
+charging the difference on an upgrade, crediting it on a downgrade, crediting
+the unused remainder on cancellation, and charging nothing when the change lands
+exactly on a cycle boundary.
 
-4. **Database setup (PostgreSQL in Docker):**
-   ```bash
-   # Start PostgreSQL 16 container (Host port 5433)
-   docker compose up -d
-
-   # Build shared TypeScript types
-   npm run build -w @dealflow360/shared
-
-   # Generate Prisma client and apply migrations
-   npm run prisma:generate -w backend
-   npm run prisma:migrate -w backend
-
-   # Seed database with demo accounts, products, warehouses, and quotations
-   npm run seed
-   ```
-
-5. **Start development servers:**
-   ```bash
-   npm run dev
-   ```
-   - **Internal Sales Workspace:** [http://localhost:5173](http://localhost:5173)
-   - **Customer Negotiation Portal:** [http://localhost:5173/portal/login](http://localhost:5173/portal/login)
-   - **Backend API:** [http://localhost:4000](http://localhost:4000)
-   - **API Health Check:** [http://localhost:4000/health](http://localhost:4000/health)
+**All three are pure functions** — plain objects in, plain objects out, no
+database and no framework — so they are unit-tested directly and can be shown to
+be correct rather than demonstrated to be plausible.
 
 ---
 
-## Default Seed Accounts & Credentials
+## Running it
 
-All seeded accounts use the universal password: **`dealflow360`**
-
-### Internal Staff Accounts (`/login`)
-| Role | Email | Name | Focus Area |
-|---|---|---|---|
-| **Sales Rep** | `rep@dealflow360.test` | Riya Sales Rep | Build quotes, apply discounts, upsell suggestions |
-| **Sales Manager** | `manager@dealflow360.test` | Manav Sales Manager | Approve/reject quotes, configure discount tiers, deal health |
-| **Finance / Ops** | `finance@dealflow360.test` | Farah Finance | Tier-2 high-risk approvals, split overrides, hybrid billing |
-| **Administrator** | `admin@dealflow360.test` | Anaya Admin | Full system configuration, products, staff users, reporting |
-
-### Customer Portal Accounts (`/portal/login`)
-| Customer | Tier | Contact Email | Contact Name |
-|---|---|---|---|
-| **Acme Corp** | Gold (15% ceiling) | `aarti@acme.test` | Aarti Buyer |
-| **Globex Industries** | Silver (12% ceiling) | `gita@globex.test` | Gita Rao |
-| **Initech** | Bronze (10% ceiling) | `ishan@initech.test` | Ishan Mehta |
-
----
-
-## Key Features Breakdown
-
-### 1. The Blended Discount Risk Engine
-Evaluates quotes line-by-line against `min(tierCeiling, categoryCeiling)`.
-
-$$\text{Applicable Ceiling} = \min(\text{Tier Ceiling}, \text{Category Ceiling})$$
-$$\text{Overage} = \max(0, \text{Discount Given} - \text{Applicable Ceiling})$$
-$$\text{Blended Score} = 0.6 \times \max(\text{Line Overages}) + 0.4 \times \sum(\text{Line Overages})$$
-
-*Worked Example:*
-- Customer: **Acme Corp** (Gold tier: 15% ceiling)
-- Product 1: **Laptop Pro 14** (Hardware ceiling 15%) @ **12% discount** → 0pt overage.
-- Product 2: **Onsite Setup Service** (Services ceiling 10%) @ **18% discount** → **8pt overage**.
-- Even though 15% sounds acceptable for a Gold customer, the service line breached its stricter limit. The blended score flags **8.00 / HIGH Risk** and automatically routes to **Sales Manager → Finance**.
-
-### 2. Multi-Warehouse Split Allocator
-Optimizes fulfillment across warehouses (`split-allocator.ts`):
-1. **Shipment Minimization:** Prefers single-warehouse coverage; reuses warehouses already shipping earlier order lines.
-2. **Cost Weight Optimization:** Breaks ties using warehouse `shipping_cost_weight`.
-3. **Automated Backorder Handling:** Unfulfilled shortfalls generate backorder records, with a **"Consolidate Remaining Backorder"** action once stock arrives.
-
-### 3. Hybrid Billing & Proration
-Mixes one-time and subscription lines on a single order:
-- **One-time physical items:** Invoiced upon shipment dispatch.
-- **Recurring subscriptions:** Invoiced on billing schedule cycles (`MONTHLY`, `QUARTERLY`, `ANNUAL`).
-- **Mid-Cycle Proration:** Computes daily rate differences over cycle days (`30`, `90`, `365`). Mid-cycle cancellations automatically issue a `CreditNote`.
-
-### 4. Customer Portal Negotiation
-Customers negotiate live through an isolated portal:
-- Line comments and counter-discount proposals.
-- Staff can review, accept, or reject counters in their workspace.
-- If terms are accepted that breach approval thresholds, the deal automatically re-enters the approval chain.
-
-### 5. Deal Health Monitoring
-Three real-time detectors:
-- **`STALLED_DEAL`:** Quotations inactive for more than 14 days.
-- **`DISCOUNT_ANOMALY`:** Discounts >15 points above the specific rep's historical average.
-- **`DELIVERY_SLIPPAGE`:** Confirmed orders with unfulfilled shipments past the promised delivery date.
-
----
-
-## Useful Commands
+Prerequisites: Node 20+, Docker (for Postgres only — the app itself is not
+containerised).
 
 ```bash
-# Run backend and frontend concurrently
-npm run dev
+npm install                          # also generates the Prisma client
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 
-# Run Vitest test suite (16 tests green)
-npm test -w backend
-
-# Run full monorepo typecheck (0 errors)
-npm run typecheck
-
-# Build all packages for production
-npm run build
-
-# Recompile shared TypeScript definitions
-npm run build -w @dealflow360/shared
-
-# Re-seed the PostgreSQL database
+docker compose up -d                 # Postgres 16 on localhost:5433
+npm run prisma:migrate -w backend
 npm run seed
+
+npm run dev                          # API :4000, app :5173
 ```
+
+Open http://localhost:5173.
+
+| | |
+|---|---|
+| Internal workspace | http://localhost:5173/login |
+| Customer portal | http://localhost:5173/portal/login |
+| API | http://localhost:4000 (`GET /health`) |
+
+### Sign in
+
+Every seeded account uses the password **`dealflow360`**.
+
+| Email | Role | Sees |
+|---|---|---|
+| `rep@dealflow360.test` | Sales Rep | builds quotes, answers customer negotiations |
+| `manager@dealflow360.test` | Sales Manager | the approval desk, deal health |
+| `finance@dealflow360.test` | Finance | approvals, subscriptions, invoices, inventory |
+| `admin@dealflow360.test` | Admin | everything, plus staff users and discount ceilings |
+
+Customer portal: `aarti@acme.test` (Acme, Gold), `gita@globex.test` (Globex,
+Silver), `ishan@initech.test` (Initech, Bronze) — same password.
+
+> Use `npm run seed`, not `npx prisma db seed` — there is no `prisma.seed` key,
+> so the latter silently does nothing and leaves you with an empty database.
 
 ---
 
-## License & Credits
+## A five-minute tour
 
-Built for the **Odoo Hackathon 2026**.  
-Designed and engineered as a self-governing B2B sales operations platform.
+1. **Sign in as the rep.** Open `Q-2026-0001` — the worked example. Each line
+   shows its own limit and an `OVER (+8pt)` badge where it breaks one. Change a
+   discount and the totals, margin, ceiling and overage all come back
+   recalculated. Accept an upsell from the panel and watch the order total move.
+2. **Submit it.** No "request approval" button — the engine scores it HIGH and
+   raises a Sales Manager → Finance chain by itself.
+3. **Sign in as the manager.** The approval detail explains *why* it was flagged,
+   line by line, with the step timeline and the audit trail underneath. Approve
+   it.
+4. **Confirm the order.** The fulfillment detail shows the suggested split with
+   quantities, shipment count and cost per warehouse — accept it or override it
+   by hand.
+5. **Sign in to the portal as the customer.** Ask for a bigger discount on a
+   line. The quote moves to Negotiation; if the agreed terms break a ceiling it
+   re-enters approval automatically — from the portal *and* when staff accept
+   the counter from the quotation. Agreeing on the phone cannot bypass
+   governance.
+6. **Sign in as finance.** The order's one-time and recurring lines bill
+   separately. Record a payment and the invoice closes.
+7. **Deal health** (manager) scans for stalled deals, discount anomalies and
+   delivery slippage, and lets you escalate or nudge the rep — on the record,
+   not by email.
+8. **Reports** (manager/finance/admin) filter by period, owner, approval status
+   and product, and export to PDF or XLSX.
+
+The notification bell in the header is live throughout: pending approvals, open
+alerts and quotes waiting on a reply, each scoped to what your role can act on.
+
+---
+
+## Stack
+
+| Layer | Choice |
+|---|---|
+| Frontend | React 18 + TypeScript + Vite + Tailwind |
+| Backend | Node + Express + TypeScript, REST |
+| Database | PostgreSQL 16 + Prisma 6 |
+| Monorepo | npm workspaces — `shared`, `backend`, `frontend` |
+| Tests | Vitest (backend), Playwright for browser verification |
+
+```
+shared/     types shared by both sides — a Quotation is declared once
+backend/    Express API, Prisma schema, business logic
+frontend/   React: the internal workspace and the customer portal
+docs/       HANDOFF.md — the working notes for whoever picks this up next
+```
+
+A few conventions worth knowing before reading the code:
+
+- every endpoint answers `{ data, error }`; lists add `meta`
+- money is `Decimal`, never `Float`; percentages are decimal percent (`12.5` is
+  12.5%)
+- controllers are thin — they parse, delegate and respond, nothing else
+- the customer portal is a **separate surface** with its own middleware, its own
+  token and its own secret; portal reads are scoped server-side, never by a
+  client-side filter
+- approvals, rejections, returns, discount edits, ceiling changes, negotiation
+  answers and manual fulfillment overrides all write to `audit_log`
+- REST only — there is no socket layer
+
+---
+
+## Tests
+
+```bash
+npm test -w backend      # 24 tests
+npm run typecheck        # shared + backend + frontend
+```
+
+The suite covers the three engines and the negotiation flow:
+
+| File | Covers |
+|---|---|
+| `discount-engine.test.ts` | the worked example, and a "many small overages" case proving the blended score is not simply max-of-line |
+| `fulfillment-split.test.ts` | splitting across two warehouses, backorders, single-warehouse preference, shipment reuse, and not double-promising stock |
+| `subscription-proration.test.ts` | upgrades, downgrades, quantity changes, cancellation credits and cycle boundaries |
+| `negotiation.test.ts` | answering a counter — priced inside the ceiling, a breach re-entering approval, rejection, and two people answering at once |
+
+UI behaviour is verified by driving the running app with Playwright, asserting
+zero console errors alongside the behavioural checks. Frontend unit tests are
+deliberately out of scope.
+
+---
+
+## Scope
+
+**Built:** all 18 screens in `specs.md` §6, and the 8-step acceptance flow in §7.
+
+**Deliberately not built:** multi-currency and multi-company (called out as a
+bonus, not a requirement), self-service signup and SSO, and a socket layer.
+Configuring the approval-chain bands is phase 2 of the discount-tiers screen —
+the ceilings are editable today, the bands are shown read-only because they live
+inside the pure engine rather than in a table.
+
+`docs/HANDOFF.md` has the full picture: what exists, what does not, why, and
+every trap worth knowing before changing something.
