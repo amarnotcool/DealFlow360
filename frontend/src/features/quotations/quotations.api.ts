@@ -1,7 +1,10 @@
 import type {
+  AuditTrailEntryView,
   QuotationDetailView,
   QuotationListItem,
   QuotationStatus,
+  RecommendationView,
+  SalesOrderConfirmationView,
 } from '@dealflow360/shared';
 
 import { apiDelete, apiGet, apiList, apiPatch, apiPost } from '../../lib/api-client';
@@ -11,22 +14,32 @@ export function fetchQuotations(status?: QuotationStatus) {
   return apiList<QuotationListItem>(`/quotations${query}`);
 }
 
+export function fetchRecommendations(quotationId: string) {
+  return apiList<RecommendationView>(`/quotations/${quotationId}/recommendations`);
+}
+
+export function fetchAuditTrail(quotationId: string) {
+  return apiList<AuditTrailEntryView>(`/quotations/${quotationId}/audit`);
+}
+
 export function fetchQuotation(id: string) {
   return apiGet<QuotationDetailView>(`/quotations/${id}`);
 }
 
-export function createQuotation(body: {
-  customerId: string;
-  ownerUserId: string;
-  actorUserId: string;
-  lines: [];
-}) {
+export function createQuotation(body: { customerId: string; lines: [] }) {
   return apiPost<QuotationDetailView>('/quotations', body);
 }
 
 export function addQuotationLine(
   quotationId: string,
-  body: { actorUserId: string; productId: string; quantity: number; discountPct: number },
+  body: {
+    productId: string;
+    /** Null when the product is sold as one configuration. */
+    productVariantId?: string | null;
+    quantity: number;
+    discountPct: number;
+    sourceRecommendationId?: string | null;
+  },
 ) {
   return apiPost<QuotationDetailView>(`/quotations/${quotationId}/lines`, body);
 }
@@ -34,15 +47,19 @@ export function addQuotationLine(
 export function updateQuotationLine(
   quotationId: string,
   lineId: string,
-  body: { actorUserId: string; discountPct?: number; quantity?: number },
+  body: { discountPct?: number; quantity?: number },
 ) {
   return apiPatch<QuotationDetailView>(`/quotations/${quotationId}/lines/${lineId}`, body);
 }
 
-export function deleteQuotationLine(quotationId: string, lineId: string, actorUserId: string) {
-  return apiDelete<QuotationDetailView>(`/quotations/${quotationId}/lines/${lineId}`, { actorUserId });
+export function deleteQuotationLine(quotationId: string, lineId: string) {
+  return apiDelete<QuotationDetailView>(`/quotations/${quotationId}/lines/${lineId}`, {});
 }
 
-export function submitQuotation(quotationId: string, actorUserId: string) {
-  return apiPost<QuotationDetailView>(`/quotations/${quotationId}/submit`, { actorUserId });
+export function submitQuotation(quotationId: string) {
+  return apiPost<QuotationDetailView>(`/quotations/${quotationId}/submit`, {});
+}
+
+export function confirmQuotation(quotationId: string) {
+  return apiPost<SalesOrderConfirmationView>(`/quotations/${quotationId}/confirm`, {});
 }

@@ -3,6 +3,8 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 
 import App from './App';
+import { AuthProvider } from './context/AuthContext';
+import { PortalAuthProvider } from './context/PortalAuthContext';
 import './index.css';
 
 const rootElement = document.getElementById('root');
@@ -13,8 +15,14 @@ if (!rootElement) {
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <BrowserRouter>
-      <App />
+    {/* Opt in to the React Router v7 behaviours now, so the console stays clean
+        and the upgrade is a no-op. */}
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <AuthProvider>
+        <PortalAuthProvider>
+          <App />
+        </PortalAuthProvider>
+      </AuthProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

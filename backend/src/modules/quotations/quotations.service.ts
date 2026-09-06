@@ -4,13 +4,14 @@
 // database, handed to the pure engine in discount-engine.service.ts, and its
 // result is persisted. Nothing in this file recomputes an overage or a score.
 
-import { Prisma, QuotationStatus, ApprovalStepStatus, ApprovalLevel, AuditAction, RiskLevel as PrismaRiskLevel, LineType } from '@prisma/client';
+import { Prisma, QuotationStatus, ApprovalStepStatus, ApprovalLevel, AuditAction, RiskLevel as PrismaRiskLevel, LineType, SalesOrderStatus } from '@prisma/client';
 import type { DiscountEngineLineInput, DiscountEngineResult } from '@dealflow360/shared';
 
 import { prisma } from '../../lib/prisma-client';
 import { ConflictError, NotFoundError, ValidationError } from '../../lib/errors';
 import { recordAudit } from '../../shared/audit/audit.service';
 import { computeDiscountRisk } from '../discount-engine/discount-engine.service';
+import { createSubscriptionsForOrder } from '../subscriptions/subscriptions.service';
 
 const D = (value: Prisma.Decimal.Value) => new Prisma.Decimal(value);
 const HUNDRED = D(100);
@@ -311,6 +312,77 @@ export async function getQuotation(id: string) {
 }
 
 // ---------------------------------------------------------------------------
+// Audit trail (screen 6)
+// ---------------------------------------------------------------------------
+
+/** The portal contact a customer-side entry names in its own changes. */
+function portalContactIdOf(changes: Prisma.JsonValue): string | null {
+  if (typeof changes !== 'object' || changes === null || Array.isArray(changes)) {
+    return null;
+  }
+  const id = (changes as Record<string, Prisma.JsonValue | undefined>).portalContactId;
+  return typeof id === 'string' ? id : null;
+}
+
+/**
+ * The quote's story: its own entries plus every line's, oldest first. A read,
+ * never a write — reading the audit log writes no audit row.
+ */
+export async function getAuditTrail(quotationId: string) {
+  const quotation = await prisma.quotation.findUnique({
+    where: { id: quotationId },
+    select: { id: true, lines: { select: { id: true } } },
+  });
+  if (!quotation) {
+    throw new NotFoundError('Quotation', quotationId);
+  }
+
+  const lineIds = quotation.lines.map((line) => line.id);
+  const entries = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entityType: 'quotation', entityId: quotationId },
+        { entityType: 'quotation_line', entityId: { in: lineIds } },
+      ],
+    },
+    include: { user: { select: { id: true, fullName: true } } },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  const contactIds = [
+    ...new Set(
+      entries
+        .map((entry) => portalContactIdOf(entry.changes))
+        .filter((id): id is string => id !== null),
+    ),
+  ];
+  const contacts =
+    contactIds.length === 0
+      ? []
+      : await prisma.customerContact.findMany({
+          where: { id: { in: contactIds } },
+          select: { id: true, fullName: true },
+        });
+  const contactById = new Map(contacts.map((contact) => [contact.id, contact]));
+
+  const rows = entries.map((entry) => {
+    const contactId = portalContactIdOf(entry.changes);
+    return {
+      id: entry.id,
+      entityType: entry.entityType,
+      action: entry.action,
+      reason: entry.reason,
+      createdAt: entry.createdAt,
+      actor: entry.user,
+      portalContact: contactId ? (contactById.get(contactId) ?? null) : null,
+      changes: entry.changes,
+    };
+  });
+
+  return { rows, total: rows.length };
+}
+
+// ---------------------------------------------------------------------------
 // Writes
 // ---------------------------------------------------------------------------
 
@@ -557,6 +629,40 @@ async function findAssigneeForLevel(
   return userRole?.userId ?? null;
 }
 
+/**
+ * Rebuilds the approval chain from a risk result: superseded steps are dropped
+ * and a fresh PENDING step is created for every level the engine asked for.
+ *
+ * Both routes into approval use this — the rep submitting a draft, and a portal
+ * negotiation that pushes agreed terms back over a ceiling — so the two can
+ * never drift apart.
+ */
+export async function rebuildApprovalChain(
+  tx: Prisma.TransactionClient,
+  quotationId: string,
+  risk: DiscountEngineResult,
+): Promise<ApprovalLevel[]> {
+  await tx.approvalStep.deleteMany({ where: { quotationId } });
+
+  const levels: ApprovalLevel[] = [];
+
+  for (const step of risk.requiredApprovalChain) {
+    const level = step.level as ApprovalLevel;
+    await tx.approvalStep.create({
+      data: {
+        quotationId,
+        level,
+        sequence: step.sequence,
+        status: ApprovalStepStatus.PENDING,
+        assigneeUserId: await findAssigneeForLevel(tx, level),
+      },
+    });
+    levels.push(level);
+  }
+
+  return levels;
+}
+
 export async function submitQuotation(quotationId: string, actorUserId: string) {
   await prisma.$transaction(async (tx) => {
     const quotation = await tx.quotation.findUnique({
@@ -575,11 +681,10 @@ export async function submitQuotation(quotationId: string, actorUserId: string) 
 
     const risk = await recomputeQuotation(tx, quotationId);
 
-    // Superseded steps from an earlier submit are dropped; the chain is rebuilt
-    // from the score the engine just returned.
-    await tx.approvalStep.deleteMany({ where: { quotationId } });
-
     if (risk.requiredApprovalChain.length === 0) {
+      // Nothing to route: drop any chain an earlier submit left behind.
+      await tx.approvalStep.deleteMany({ where: { quotationId } });
+
       await tx.quotation.update({
         where: { id: quotationId },
         data: {
@@ -601,17 +706,7 @@ export async function submitQuotation(quotationId: string, actorUserId: string) 
       return;
     }
 
-    for (const step of risk.requiredApprovalChain) {
-      await tx.approvalStep.create({
-        data: {
-          quotationId,
-          level: step.level as ApprovalLevel,
-          sequence: step.sequence,
-          status: ApprovalStepStatus.PENDING,
-          assigneeUserId: await findAssigneeForLevel(tx, step.level as ApprovalLevel),
-        },
-      });
-    }
+    await rebuildApprovalChain(tx, quotationId, risk);
 
     await tx.quotation.update({
       where: { id: quotationId },
@@ -637,4 +732,112 @@ export async function submitQuotation(quotationId: string, actorUserId: string) 
   });
 
   return getQuotation(quotationId);
+}
+
+// ---------------------------------------------------------------------------
+// Confirm — the approved quote becomes the order fulfillment works from
+// ---------------------------------------------------------------------------
+
+/** Generates the next SO-<year>-<counter> number. */
+async function nextSalesOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `SO-${year}-`;
+  const latest = await tx.salesOrder.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: 'desc' },
+    select: { number: true },
+  });
+
+  const lastCounter = latest ? Number.parseInt(latest.number.slice(prefix.length), 10) : 0;
+  return `${prefix}${String(lastCounter + 1).padStart(4, '0')}`;
+}
+
+/**
+ * Confirms an approved quotation: the quote moves to CONFIRMED and its lines
+ * are copied into a sales_order (1:1 with the quotation, as specs.md §5
+ * requires for quote-to-order traceability). Fulfillment anchors on that order.
+ */
+export async function confirmQuotation(quotationId: string, actorUserId: string) {
+  const salesOrderId = await prisma.$transaction(async (tx) => {
+    const quotation = await tx.quotation.findUnique({
+      where: { id: quotationId },
+      include: { lines: { orderBy: { sequence: 'asc' } }, salesOrder: { select: { id: true } } },
+    });
+    if (!quotation) {
+      throw new NotFoundError('Quotation', quotationId);
+    }
+    if (quotation.status !== QuotationStatus.APPROVED) {
+      throw new ConflictError(`Quotation in status ${quotation.status} cannot be confirmed`);
+    }
+    if (quotation.salesOrder) {
+      throw new ConflictError(`Quotation ${quotation.number} already has a sales order`);
+    }
+    if (quotation.lines.length === 0) {
+      throw new ValidationError('A quotation needs at least one line before it can be confirmed');
+    }
+
+    const salesOrder = await tx.salesOrder.create({
+      data: {
+        number: await nextSalesOrderNumber(tx),
+        quotationId: quotation.id,
+        customerId: quotation.customerId,
+        status: SalesOrderStatus.CONFIRMED,
+        oneTimeTotalAmount: quotation.oneTimeTotalAmount,
+        recurringTotalAmount: quotation.recurringTotalAmount,
+        totalAmount: quotation.totalAmount,
+        confirmedByUserId: actorUserId,
+      },
+    });
+
+    for (const line of quotation.lines) {
+      await tx.salesOrderLine.create({
+        data: {
+          salesOrderId: salesOrder.id,
+          quotationLineId: line.id,
+          productId: line.productId,
+          productVariantId: line.productVariantId,
+          lineType: line.lineType,
+          sequence: line.sequence,
+          quantity: line.quantity,
+          unitPrice: line.unitPrice,
+          discountPct: line.discountPct,
+          lineTotal: line.lineTotal,
+        },
+      });
+    }
+
+    await tx.quotation.update({
+      where: { id: quotationId },
+      data: { status: QuotationStatus.CONFIRMED, confirmedAt: new Date(), lastActivityAt: new Date() },
+    });
+
+    // A confirmed order carries its recurring lines straight into
+    // subscriptions, so one confirm produces both halves of a hybrid order.
+    const subscriptionIds = await createSubscriptionsForOrder(tx, salesOrder.id, actorUserId);
+
+    await recordAudit(tx, {
+      entityType: 'quotation',
+      entityId: quotationId,
+      action: AuditAction.CONFIRM,
+      userId: actorUserId,
+      reason: `Confirmed — sales order ${salesOrder.number} created`,
+      changes: {
+        salesOrderId: salesOrder.id,
+        number: salesOrder.number,
+        lineCount: quotation.lines.length,
+        subscriptionIds,
+      },
+    });
+
+    return salesOrder.id;
+  });
+
+  return prisma.salesOrder.findUniqueOrThrow({
+    where: { id: salesOrderId },
+    include: {
+      customer: { select: { id: true, name: true } },
+      quotation: { select: { id: true, number: true, status: true } },
+      lines: { orderBy: { sequence: 'asc' } },
+    },
+  });
 }
