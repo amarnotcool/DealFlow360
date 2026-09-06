@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { RoleCode } from '@dealflow360/shared';
 
 import { useAuth } from '../../features/auth/useAuth';
-import { ALL_ROLES, APPROVALS_ROLES, BILLING_ROLES } from '../../routes/access';
+import { ADMIN_ONLY, ALL_ROLES, APPROVALS_ROLES, BILLING_ROLES, REPORTING_ROLES } from '../../routes/access';
 import { cn } from '../ui/cn';
 
 interface NavItem {
@@ -36,15 +36,18 @@ function Glyph({ d }: { d: string }) {
 
 // Nav items follow specs.md §6.
 const NAV_ITEMS: NavItem[] = [
-  { label: 'Dashboard', to: '/dashboard', enabled: false, roles: ALL_ROLES, icon: <Glyph d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z" /> },
+  { label: 'Dashboard', to: '/dashboard', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M4 13h6V4H4zM14 20h6v-9h-6zM4 20h6v-4H4zM14 8h6V4h-6z" /> },
   { label: 'Quotations', to: '/quotations', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M7 4h7l4 4v12H7zM14 4v4h4M10 13h6M10 17h4" /> },
   { label: 'Approvals', to: '/approvals', enabled: true, roles: APPROVALS_ROLES, icon: <Glyph d="M4 12l5 5L20 6" /> },
   { label: 'Fulfillment', to: '/fulfillment', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M3 8h11v9H3zM14 11h4l3 3v3h-7zM7 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM18 20a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" /> },
   { label: 'Subscriptions', to: '/subscriptions', enabled: true, roles: BILLING_ROLES, icon: <Glyph d="M4 12a8 8 0 0113.7-5.6M20 12a8 8 0 01-13.7 5.6M18 4v4h-4M6 20v-4h4" /> },
   { label: 'Invoices', to: '/invoices', enabled: true, roles: BILLING_ROLES, icon: <Glyph d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
-  { label: 'Deal Health', to: '/deal-health', enabled: false, roles: APPROVALS_ROLES, icon: <Glyph d="M3 12h4l2 6 4-14 2 8h6" /> },
-  { label: 'Reports', to: '/reports', enabled: false, roles: APPROVALS_ROLES, icon: <Glyph d="M4 20V9M10 20V4M16 20v-7M22 20H2" /> },
+  { label: 'Deal Health', to: '/deal-health', enabled: true, roles: APPROVALS_ROLES, icon: <Glyph d="M3 12h4l2 6 4-14 2 8h6" /> },
+  { label: 'Reports', to: '/reports', enabled: true, roles: REPORTING_ROLES, icon: <Glyph d="M4 20V9M10 20V4M16 20v-7M22 20H2" /> },
   { label: 'Products', to: '/products', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM4 7.5l8 4.5 8-4.5M12 12v9" /> },
+  { label: 'Warehouses', to: '/warehouses', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M3 10.5 12 4l9 6.5V20H3zM9 20v-6h6v6" /> },
+  { label: 'Customers', to: '/customers', enabled: true, roles: ALL_ROLES, icon: <Glyph d="M17 20v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2M9.5 10a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM22 20v-2a4 4 0 00-3-3.9M16 3.1a4 4 0 010 7.8" /> },
+  { label: 'Staff Users', to: '/users', enabled: true, roles: ADMIN_ONLY, icon: <Glyph d="M12 12a4 4 0 100-8 4 4 0 000 8zM4 21v-1a6 6 0 016-6h4a6 6 0 016 6v1M18 8h4M20 6v4" /> },
 ];
 
 const PILL_BASE =

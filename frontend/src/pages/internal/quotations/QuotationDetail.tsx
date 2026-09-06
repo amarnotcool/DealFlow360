@@ -15,6 +15,8 @@ import type {
 } from '@dealflow360/shared';
 
 import { InternalLayout } from '../../../components/layout/InternalLayout';
+import NegotiationPanel from './components/NegotiationPanel';
+import UpsellPanel from './components/UpsellPanel';
 import {
   Badge,
   Button,
@@ -457,6 +459,21 @@ export default function QuotationDetail() {
           </tbody>
         </Table>
       </TableShell>
+
+      {isDraft && (
+        <UpsellPanel
+          quotationId={id}
+          linesKey={quotation.lines.map((line) => line.id).join(',')}
+          onAccepted={(updated) => {
+            setQuotation(updated);
+            setRouting(null);
+          }}
+        />
+      )}
+
+      {/* What the customer asked for from the portal. The panel renders nothing
+          when nothing has ever been asked, so a quiet quote stays quiet. */}
+      <NegotiationPanel quotationId={id} onQuotationChanged={() => void load()} />
 
       {quotation.approvalSteps.length > 0 && (
         <Card className="mt-lg">

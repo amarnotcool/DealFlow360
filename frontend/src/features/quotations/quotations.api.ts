@@ -1,7 +1,9 @@
 import type {
+  AuditTrailEntryView,
   QuotationDetailView,
   QuotationListItem,
   QuotationStatus,
+  RecommendationView,
   SalesOrderConfirmationView,
 } from '@dealflow360/shared';
 
@@ -10,6 +12,14 @@ import { apiDelete, apiGet, apiList, apiPatch, apiPost } from '../../lib/api-cli
 export function fetchQuotations(status?: QuotationStatus) {
   const query = status ? `?status=${status}` : '';
   return apiList<QuotationListItem>(`/quotations${query}`);
+}
+
+export function fetchRecommendations(quotationId: string) {
+  return apiList<RecommendationView>(`/quotations/${quotationId}/recommendations`);
+}
+
+export function fetchAuditTrail(quotationId: string) {
+  return apiList<AuditTrailEntryView>(`/quotations/${quotationId}/audit`);
 }
 
 export function fetchQuotation(id: string) {
@@ -28,6 +38,7 @@ export function addQuotationLine(
     productVariantId?: string | null;
     quantity: number;
     discountPct: number;
+    sourceRecommendationId?: string | null;
   },
 ) {
   return apiPost<QuotationDetailView>(`/quotations/${quotationId}/lines`, body);
